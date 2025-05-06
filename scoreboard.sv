@@ -126,6 +126,22 @@ task execute()
   rf_write_addr<=rd_e;
   rf_write_en<=1;
   case(opcode)
+  R_TYPE:
+             case(funct3)
+                add:
+                  if( funct7==7'h00) rf_write_data<= rs1_data+rs2_data;
+                  else if(funct7==7'h20) rf_write_data<= rs1_data-rs2_data;
+                sll: rf_write_data<= rs1_data<<rs2_data[4:0];
+                slt: rf_write_data<= (signed'(rs1_data)<signed'(rs2_data))? 1:0;
+                sltu: rf_write_data<= (rs1_data<rs2_data)? 1:0;
+                Xor: rf_write_data<= rs1_data ^ rs2_data;
+                srx: 
+                  if( funct7==7'h00) rf_write_data<= rs1_data>>rs2_data[4:0];
+               	  else if(funct7==7'h20) rf_write_data<= rs1_data>>>rs2_data[4:0];
+                Or: rf_write_data<= rs1_data | rs2_data;
+                And: rf_write_data<= rs1_data & rs2_data;
+
+             endcase
   I_TYPE_0:
              case(funct3)
                 addi: rf_write_data<= rs1_data+imm_d;
