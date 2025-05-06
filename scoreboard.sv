@@ -1,10 +1,86 @@
 import risc_pkg::* ;
-class riscv_scoreboard extends uvm_scoreboard;
-  `uvm_component_utils(riscv_scoreboard)
 
+class scoreboard extends uvm_component;
+  //---------------------------------------
+  // factory registeration 
+  //---------------------------------------
+  `uvm_component_utils(scoreboard)
+   //---------------------------------------
   // Virtual interface to DUT
   virtual riscv_if vif;
   ins_seq_item inst_seq;
+  bit [31:0] mem [int]; // This will model our data memory
+
+  // analysis ports
+  //---------------------------------------
+  uvm_analysis_imp_data_mon_export #(data_seq_item, scoreboard)  data_mon_export;
+  uvm_analysis_imp_inst_mon_export #(inst_seq_item, scoreboard) inst_mon_export;
+  uvm_analysis_imp_alu_mon_export #(alu_div_seq_item, scoreboard) alu_mon_export;
+  uvm_analysis_imp_mul_mon_export #(mult_seq_item, scoreboard) mul_mon_export;
+  uvm_analysis_imp_rf_mon_out_export #(RegFile_seq_item, scoreboard) rf_mon_out_export;
+  uvm_analysis_imp_rf_mon_in_export #(RegFile_seq_item, scoreboard) rf_mon_in_export;
+  //---------------------------------------
+  // queues to store seq_item from monitors 
+  //---------------------------------------
+  //---------------------------------------
+  // constructor
+  //---------------------------------------
+  function new(string name="scoreboard",uvm_component parent);
+    super.new(name,parent);
+  endfunction
+  //--------------------------------------- 
+  // build phase
+  //---------------------------------------
+ function void build_phase(uvm_phase phase);
+    super.build_phase(phase);
+    data_mon_export = new("data_mon_export",this);
+    inst_seq_item = new("inst_seq_item",this);
+    alu_mon_export = new("alu_mon_export ",this);
+    mul_mon_export= new("mul_mon_export ",this);
+    rf_mon_out_export= new("rf_mon_out_export ",this);
+    rf_mon_in_export = new("rf_mon_in_export",this);
+    instr_ap = new("instr_ap", this);
+    if (!uvm_config_db#(virtual riscv_if)::get(this, "", "vif", vif))
+      `uvm_fatal("SB", "Can't get vif from config DB")
+  endfunction
+  //---------------------------------------
+  // write tasks - recives the items from monitors and pushes into queues
+  //---------------------------------------
+  function void write_data_mon_export (data_seq_item data_item);
+    //qu_in.push_back(t_in);
+     if (data_item.data_we_o) begin
+    // This is a write transaction: update memory
+    mem[data_item.data_addr_o] = data_item.data_wdata_o;
+     end
+    `uvm_info("scoreboard",{"Get new input item: ", data_item.convert2string()}, UVM_HIGH)
+  endfunction 
+  
+  function void write_inst_mon_export (inst_seq_item inst _item);
+    //qu_out.push_back(t_out);
+    `uvm_info("scoreboard",{"Get new inst item: ", inst_item.convert2string()}, UVM_HIGH)
+  endfunction 
+  
+  function void write_alu_mon_export (alu_div_seq_item alu _item);
+    //qu_out.push_back(t_out);
+    
+  endfunction 
+  
+  function void write_mul_mon_export (mult_seq_item mult _item);
+    //qu_out.push_back(t_out);
+    
+  endfunction 
+  
+  function void write_rf_mon_in_export (RegFile_seq_item rf_in_item);
+    //qu_out.push_back(t_out);
+    
+  endfunction 
+  
+  function void write_rf_mon_out_export (RegFile_seq_item rf_out_item);
+    //qu_out.push_back(t_out);
+    
+  endfunction 
+  
+ 
 
 
   // Handle incoming instruction
@@ -159,6 +235,31 @@ task execute()
   U_TYPE_0: rf_write_data<= imm_e<<12;
   U_TYPE_1: rf_write_data<= pc+(imm_e<<12);
 
+  I_TYPE_1: begin
+      load_addr = rs1_data + imm_e;
+    case (funct3)
+      3'b000: rf_write_data = {{24{mem[load_addr][7]}},  mem[load_addr][7:0]};   // lb (sign-extend from 8 bits)
+      3'b001: rf_write_data = {{16{mem[load_addr][15]}}, mem[load_addr][15:0]};  // lh (sign-extend from 16 bits)
+      3'b010: rf_write_data = mem[load_addr];                                    // lw (full word, no extension)
+      3'b100: rf_write_data = {24'b0, mem[load_addr][7:0]};                      // lbu (zero-extend)
+      3'b101: rf_write_data = {16'b0, mem[load_addr][15:0]};                     // lhu (zero-extend)
+    endcase
+
+      rf_write_data = load_data;
+    end
+
+    // S-Type Stores
+    S_TYPE: begin
+      store_addr = rs1_data + imm_d;
+      store_data = rs2_data;
+      case (funct3)
+        3'b000: mem[store_addr][7:0]   = store_data[7:0];   // sb
+        3'b001: mem[store_addr][15:0]  = store_data[15:0];  // sh
+        3'b010: mem[store_addr]        = store_data;        // sw
+      endcase
+      rf_write_en = 0; // stores don't write back to RF
+    end
+
   endcase
 endtask
 
@@ -174,7 +275,7 @@ endtask
   riscv_instr_txn instr_q[$];  // Queue to hold instructions
 
   // Input from monitor
-  uvm_analysis_imp#(riscv_instr_txn, riscv_scoreboard) instr_ap; //fetch
+  uvm_analysis_imp#(riscv_instr_txn, scoreboard) instr_ap; //fetch
   data_ap //excute
   alu_ap //excute
   mul_ap //excute
@@ -188,17 +289,7 @@ endtask
   // 
 
 
-
-  function new(string name, uvm_component parent);
-    super.new(name, parent);
-  endfunction
-
-  function void build_phase(uvm_phase phase);
-    super.build_phase(phase);
-    instr_ap = new("instr_ap", this);
-    if (!uvm_config_db#(virtual riscv_if)::get(this, "", "vif", vif))
-      `uvm_fatal("SB", "Can't get vif from config DB")
-  endfunction
+ 
 
   task run_phase(uvm_phase phase);
     forever begin
