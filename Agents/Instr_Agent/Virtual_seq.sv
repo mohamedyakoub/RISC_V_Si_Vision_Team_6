@@ -17,9 +17,9 @@ class virtual_seq extends uvm_sequence #(seq_item);
     Iseq = inst_seq::type_id::create("Iseq");
     Dseq = data_seq::type_id::create("Dseq");
 
-    fork begin 
+    fork  
     Iseq.start(p_sequencer.seqr_I);
     Dseq.start(p_sequencer.seqr_D);
-    join any
+    join_any
   endtask
 endclass
