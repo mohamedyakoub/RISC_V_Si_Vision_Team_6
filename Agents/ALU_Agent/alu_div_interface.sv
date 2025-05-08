@@ -1,3 +1,4 @@
+import cv32e40p_pkg::*;
 interface alu_div_if (input logic clk); 
     logic               rst_n;
     logic               ex_ready_i; // divion only 

@@ -30,12 +30,11 @@ class monitor_alu_div extends uvm_monitor;
         seq_collected.operator_i          = vif.operator_i;
         seq_collected.operand_a_i         = vif.operand_a_i;
         seq_collected.operand_b_i         = vif.operand_b_i;
-    
+
         @(posedge vif.clk iff vif.ready_o);
         seq_collected.result_o                  =  vif.result_o;
         seq_collected.comparison_result_o       =  vif.comparison_result_o; 
 
-        
         $cast(item_collected, seq_collected.clone());
         item_collected_port.write(item_collected);
        
