@@ -10,12 +10,12 @@ class scoreboard extends uvm_component;
   // analysis ports
   //---------------------------------------
   uvm_analysis_imp_data_mon_export #(data_seq_item, scoreboard)  data_mon_export;
-  uvm_analysis_imp_inst_mon_export #(inst_seq_item, scoreboard) inst_mon_export;
-  uvm_analysis_imp_rf_mon_out_export #(RegFile_seq_item, scoreboard) rf_mon_export;
+  uvm_analysis_imp_inst_mon_export #(instr_seq_item, scoreboard) inst_mon_export;
+  uvm_analysis_imp_rf_mon_export #(RegFile_seq_item, scoreboard) rf_mon_export;
   //---------------------------------------
   // Internal Regfile to save each instruction result
   //---------------------------------------
-  byte [3:0] expected_value_RegFile[0:31];
+  bit [31:0] expected_value_RegFile[0:31];
   //---------------------------------------
   // TLM FIFOs to store the transactions
   //--------------------------------------- 
@@ -30,7 +30,7 @@ class scoreboard extends uvm_component;
   
   typedef struct packed  { 
     bit [31:0] addr;
-    byte [3:0] data;
+    bit [31:0] data;
     bit [3:0] byte_enable; // enables the byte to be read/write
   }expctd_mem_data;
   
@@ -70,7 +70,7 @@ class scoreboard extends uvm_component;
   // write tasks - recives the items from monitors and pushes into queues
   //---------------------------------------
   
-  function void write_inst_mon_export (inst_seq_item inst_item);
+  function void write_inst_mon_export (instr_seq_item inst_item);
     void'(inst_fifo.try_put(inst_item));
     `uvm_info("scoreboard",{"Get new inst item: ", inst_item.convert2string()}, UVM_HIGH)
     //extract data ,calculate the result
@@ -104,8 +104,8 @@ class scoreboard extends uvm_component;
   
   function void write_data_mon_export (data_seq_item data_item); 
       if (data_item.data_we_o) begin
+	expctd_mem_data store_data = store_mem_qu.pop_front();
         `uvm_info("scoreboard",{"store data to memory: ", data_item.convert2string()}, UVM_HIGH)
-        expctd_mem_data store_data = store_mem_qu.pop_front();
         if ( (data_item.data_be_o == store_data.byte_enable ) && (data_item.data_addr_o == store_data.addr ) && (data_item.data_wdata_o == store_data.data) )
           `uvm_info("scoreboard","Pass : Expected data written to memory", UVM_HIGH) 
          
@@ -114,8 +114,8 @@ class scoreboard extends uvm_component;
       end
       
       else if (!data_item.data_we_o) begin
+	expctd_mem_data laod_data;
         `uvm_info("scoreboard",{"load data from memory: ", data_item.convert2string()}, UVM_HIGH)
-        expctd_mem_data laod_data;
         load_data.addr = data_item.data_addr_o;
         load_data.data = data_item.data_rdata_i;
         load_data.byte_enable = data_item.data_be_o;
@@ -130,7 +130,7 @@ class scoreboard extends uvm_component;
   //---------------------------------------
   virtual task run_phase(uvm_phase phase);  
     forever begin
-      inst_seq_item inst_item ;
+      instr_seq_item inst_item ;
       inst_fifo.get(inst_item);
       execute(inst_item);  
     end
@@ -139,7 +139,7 @@ class scoreboard extends uvm_component;
 //---------------------------------------
 // EXECUTE     
 //---------------------------------------
-  task execute(input inst_seq_item inst_item);
+  task execute(input instr_seq_item inst_item);
     logic [31:0] rd_data, extend_imm, rs1_data, rs2_data;
     //check pc claculated from the previous instruction
     verify_pc();
@@ -158,7 +158,7 @@ class scoreboard extends uvm_component;
     end  
   endtask
         
-  task automatic get_operands(input inst_seq_item inst_item , output logic[31:0] rs1_data ,rs2_data,extend_imm);
+  task automatic get_operands(input instr_seq_item inst_item , output logic[31:0] rs1_data ,rs2_data,extend_imm);
       extend_imm = inst_item.Extend();
       if ( (inst_item.opcode !=  U_TYPE_0) && (inst_item.opcode !=  U_TYPE_1) && (inst_item.opcode != J_TYPE) ) begin
         rs1_data = expected_value_RegFile[inst_item.rs1];
@@ -222,8 +222,8 @@ class scoreboard extends uvm_component;
       
   task automatic save_results(input bit [6:0] opcode , logic[31:0] rd_data ,logic[4:0] rd);
     if( (opcode !=  B_TYPE ) && (opcode !=  S_TYPE ) ) begin
-      expected_value_RegFile[rd] = rd_data; 
       expctd_rf_data result;
+      expected_value_RegFile[rd] = rd_data; 
       result.rd_data = rd_data;
       result.rd_addr = rd;
       if (opcode == I_TYPE_1) 
