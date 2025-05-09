@@ -11,7 +11,7 @@ class scoreboard extends uvm_component;
   //---------------------------------------
   uvm_analysis_imp_data_mon_export #(data_seq_item, scoreboard)  data_mon_export;
   uvm_analysis_imp_inst_mon_export #(instr_seq_item, scoreboard) inst_mon_export;
-  uvm_analysis_imp_rf_mon_export #(RegFile_seq_item, scoreboard) rf_mon_export;
+  uvm_analysis_imp_rf_mon_export #(reg_file_sequence_item, scoreboard) rf_mon_export;
   //---------------------------------------
   // Internal Regfile to save each instruction result
   //---------------------------------------
@@ -19,18 +19,18 @@ class scoreboard extends uvm_component;
   //---------------------------------------
   // TLM FIFOs to store the transactions
   //--------------------------------------- 
-  uvm_tlm_fifo #(inst_seq_item) inst_fifo;
+  uvm_tlm_fifo #(instr_seq_item) inst_fifo;
   //---------------------------------------
   //  structs to save the expected results
   //---------------------------------------
   typedef struct packed  { 
     logic [31:0] rd_data;
-    bit [4:0] rd_addr;
+    logic [4:0] rd_addr;
   }expctd_rf_data;
   
   typedef struct packed  { 
-    bit [31:0] addr;
-    bit [31:0] data;
+    logic [31:0] addr;
+    logic [31:0] data;
     bit [3:0] byte_enable; // enables the byte to be read/write
   }expctd_mem_data;
   
@@ -47,7 +47,7 @@ class scoreboard extends uvm_component;
   //  save the expected address for the branch and jump instructions 
   //---------------------------------------
   bit check_pc ;
-  bit[31:0] expected_pc;
+  logic[31:0] expected_pc;
   
   //---------------------------------------
   // constructor
@@ -62,7 +62,7 @@ class scoreboard extends uvm_component;
   function void build_phase(uvm_phase phase);
 	super.build_phase(phase);
     data_mon_export = new("data_mon_export",this);
-    inst_seq_item = new("inst_seq_item",this);
+    inst_mon_export = new("data_mon_export",this);
     rf_mon_export = new("rf_mon_export ",this); 
     inst_fifo = new("inst_fifo",this);
   endfunction
@@ -79,7 +79,7 @@ class scoreboard extends uvm_component;
     //if it is store calculate the address and get the data from the regester file, push to a struct
   endfunction 
   
-  function void write_rf_mon_export (RegFile_seq_item rf_item);
+  function void write_rf_mon_export (reg_file_sequence_item rf_item);
     
    // pop an element from the queue of the struct then compare address and data 
     if (rf_item.we_a_i) begin
@@ -114,17 +114,22 @@ class scoreboard extends uvm_component;
       end
       
       else if (!data_item.data_we_o) begin
-	expctd_mem_data laod_data;
+	load_from_mem(data_item);
+      end
+    
+  endfunction 
+  
+  //---------------------------------------
+  // task load data
+  //---------------------------------------
+   task load_from_mem(input data_seq_item data_item);
+	expctd_mem_data load_data;
         `uvm_info("scoreboard",{"load data from memory: ", data_item.convert2string()}, UVM_HIGH)
         load_data.addr = data_item.data_addr_o;
         load_data.data = data_item.data_rdata_i;
         load_data.byte_enable = data_item.data_be_o;
         load_mem_qu.push_back(load_data);  
-      end
-    
-  endfunction 
-  
-  
+   endtask 
   //---------------------------------------
   // run phase
   //---------------------------------------
@@ -142,16 +147,16 @@ class scoreboard extends uvm_component;
   task execute(input instr_seq_item inst_item);
     logic [31:0] rd_data, extend_imm, rs1_data, rs2_data;
     //check pc claculated from the previous instruction
-    verify_pc();
+    verify_pc(inst_item.instr_addr_o);
     get_operands(inst_item, rs1_data, rs2_data, extend_imm);   
     get_expected(inst_item.inst_type, rs1_data, rs2_data, extend_imm , inst_item.instr_addr_o,rd_data);
-    save_results(inst_item.opcode, rd_data);
+    save_results(inst_item.opcode, rd_data,inst_item.rd);
   endtask
         
-  task verify_pc();
+  task verify_pc(input logic [31:0] instr_addr_o);
     if (check_pc) begin 
       check_pc = 0; //lower the flag
-      if(inst_item.instr_addr_o == expected_pc )
+      if(instr_addr_o == expected_pc )
         `uvm_info("scoreboard","Pass : Expected instruction address", UVM_HIGH)
       else 
         `uvm_error("scoreboard","Fail: next instruction address id false")
