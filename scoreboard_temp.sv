@@ -114,11 +114,17 @@ class scoreboard extends uvm_component;
       end
       
       else if (!data_item.data_we_o) begin
-	load_from_mem(data_item);
+	//load_from_mem(data_item);
+        expctd_mem_data load_data;
+        `uvm_info("scoreboard",{"load data from memory: ", data_item.convert2string()}, UVM_HIGH)
+        load_data.addr = data_item.data_addr_o;
+        load_data.data = data_item.data_rdata_i;
+        load_data.byte_enable = data_item.data_be_o;
+        load_mem_qu.push_back(load_data); 
       end
     
   endfunction 
-  
+  /*
   //---------------------------------------
   // task load data
   //---------------------------------------
@@ -130,6 +136,7 @@ class scoreboard extends uvm_component;
         load_data.byte_enable = data_item.data_be_o;
         load_mem_qu.push_back(load_data);  
    endtask 
+   */     
   //---------------------------------------
   // run phase
   //---------------------------------------
@@ -159,10 +166,12 @@ class scoreboard extends uvm_component;
       if(instr_addr_o == expected_pc )
         `uvm_info("scoreboard","Pass : Expected instruction address", UVM_HIGH)
       else 
-        `uvm_error("scoreboard","Fail: next instruction address id false")
+        `uvm_error("scoreboard","Fail: next instruction address is false")
     end  
   endtask
-        
+//---------------------------------------
+// get_operands data     
+//---------------------------------------     
   task automatic get_operands(input instr_seq_item inst_item , output logic[31:0] rs1_data ,rs2_data,extend_imm);
       extend_imm = inst_item.Extend();
       if ( (inst_item.opcode !=  U_TYPE_0) && (inst_item.opcode !=  U_TYPE_1) && (inst_item.opcode != J_TYPE) ) begin
@@ -171,7 +180,9 @@ class scoreboard extends uvm_component;
           rs2_data = expected_value_RegFile[inst_item.rs2];
       end
   endtask
-      
+//---------------------------------------
+// get_expected result     
+//---------------------------------------          
   task automatic get_expected(input instr_type inst_type ,logic[31:0] rs1_data ,rs2_data,extend_imm, addr,output logic[31:0]rd_data );
     case (inst_type)
       ADD: rd_data = rs1_data + rs2_data;
@@ -216,15 +227,129 @@ class scoreboard extends uvm_component;
         
       LUI:   rd_data = extend_imm ;
       //MUL  , MULH , MULSU, MULU , DIV , DIVU, REM , REMU,
-      //LB   , LH   , LW   , LBU  , LHU ,
-      //SB   , SH   , SW   ,
+      LB, LH, LW, LBU, LHU, SB , SH , SW  : begin
+        logic[31:0] mem_addr;
+        mem_addr = extend_imm + rs1_data;
+        load_store_handling(inst_type,mem_addr,rs2_data,rd_data);
+      end
       //BEQ  , BNE  , BLT  , BGE  , BLTU, BGEU,  
    	  //JAL  , JALR 
       default : rd_data = 32'bx;
         
     endcase
   endtask
+//---------------------------------------
+// load_store_handling    
+//--------------------------------------- 
+  task automatic load_store_handling(input instr_type inst_type ,logic[31:0]mem_addr ,rs2_data,output logic[31:0] rd_data);
+    
+    logic [31:0] addr[1:0];
+    bit[3:0] byte_enable[1:0];
+    bit[1:0] offset;
+    bit add_cycle;
+    
+    offset = mem_addr % 4;
+    addr[0] = {mem_addr[31:2], 2'b00};
+    addr[1] = mem_addr[0] + 4;
+    //...........get byte_enable.................
+    // byte instructions
+    if (inst_type == LB || inst_type == SB)  
+      byte_enable[0] = 1'b1<<offset; ///////////////
+    // half byte instructions
+    else if (inst_type == LH || inst_type == LHU || inst_type == SH ) begin
+      if (mem_addr[1:0] != 2'b11)
+        byte_enable[0] = 2'b11<<offset;///////////
+      else begin 
+        add_cycle = 1'b1;
+        byte_enable[0] = 4'b1000 ;
+        byte_enable[1] = 4'b0001 ;
+      end
+    end
+    // word instructions
+    else if (inst_type == LW || inst_type == SW ) begin
+      if (mem_addr[1:0] == 2'b00)
+        byte_enable[0] = 4'b1111;
+      else begin 
+        add_cycle = 1'b1;
+        byte_enable[0] = 4'b1111 << offset ;////////////
+        byte_enable[1] = 4'b1111 >> (4- offset) ;
+      end
+    end
+    ////...........calculate data for each memory accessing .................
+    // store instructions
+    if (inst_type == SB || inst_type == SH || inst_type == SW) begin
+      logic [31:0] temp_data[1:0] ;
+      case(inst_type)
+        SB: temp_data[0] = rs2_data[7:0] << (8*offset);
+        SH: begin
+          if (add_cycle) begin
+            temp_data[0] = {rs2_data[7:0], 24'b0};
+            temp_data[1] = {24'b0,rs2_data[15:8]};
+          end
+          else 
+            temp_data[0] = {16'b0,rs2_data[15:0]};
+        end
+        SW: begin
+          if (add_cycle) begin
+            temp_data[0] = rs2_data << (8*offset);
+            temp_data[1] = rs2_data >> (8*(4-offset));
+          end
+          else 
+            temp_data[0] = rs2_data[31:0];
+        end
+      endcase
+      for (int i = 0 ; i <= add_cycle; i++)begin
+        expctd_mem_data store_data;
+        store_data.data = temp_data[i];
+        store_data.addr = addr[i];
+        store_data.byte_enable = byte_enable[i];
+        store_mem_qu.push_back(store_data);
+        rd_data= 32s'bx;
+      end
+    end
+    // load instructions
+    else begin
+      logic[31:0] temp_data[1:0];
+      for (int i = 0 ; i <= add_cycle; i++)begin
+	  expctd_mem_data load_data;
+          wait (load_mem_qu.size() > 0 );
+          load_data = load_mem_qu.pop_front();
+          if ((load_data.addr != addr[i]) || (load_data.byte_enable != byte_enable[i]) )
+            `uvm_error("scoreboard",$sformatf("Fail: load data from memory : address: %0d\t byte_enable: %0b\t Expected: address: %0d\tbyte_enable: %0b ",load_data.addr,load_data.byte_enable,addr[i],byte_enable[i]))
+          else begin
+            if( i == 0)
+              temp_data[i] = load_data.data >>(8*offset);
+            else if( i == 1)
+              temp_data[i] = load_data.data << (8*(4-offset)) ;
+          end      
+      end 
+      case(inst_type) 
+        LB : rd_data = {{24{temp_data[0][7]}},temp_data[0][7:0]};
+        LBU : rd_data = {24'b0,temp_data[0][7:0]};
+        LH , LHU : begin 
+          if (add_cycle) 
+            rd_data[15:0] ={temp_data[1][7:0],temp_data[0][7:0]};
+          else 
+            rd_data[15:0] = temp_data[0][15:0];
+          if(inst_type == LH )
+            rd_data[31:16] = {16{rd_data[15]}};
+          else
+            rd_data[31:16] = 16'b0;
+        end
+        LW: begin 
+          if (add_cycle)
+            rd_data = temp_data[1] ^ temp_data[0];/////////////
+          else
+            rd_data = temp_data[0];
+        end
       
+      endcase
+    end
+      
+  endtask
+//---------------------------------------
+// save results    
+//---------------------------------------          
   task automatic save_results(input bit [6:0] opcode , logic[31:0] rd_data ,logic[4:0] rd);
     if( (opcode !=  B_TYPE ) && (opcode !=  S_TYPE ) ) begin
       expctd_rf_data result;
