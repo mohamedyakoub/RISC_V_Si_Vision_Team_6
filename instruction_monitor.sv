@@ -4,10 +4,10 @@ class instruction_monitor extends uvm_monitor;
   virtual ins_if vif;  // Connect this via uvm_config_db
   uvm_analysis_port #(instr_seq_item) mon_ap;
 
-   instr_seq_item txn;
+   instr_seq_item txn, final_txn;
   function new(string name, uvm_component parent);
     super.new(name, parent);
-    txn = instr_seq_item::type_id::create("txn");
+    //txn = instr_seq_item::type_id::create("txn");
     mon_ap = new("mon_ap", this);
   endfunction
 
@@ -23,6 +23,7 @@ class instruction_monitor extends uvm_monitor;
     forever begin
       @ (vif.instr_req_o && vif.instr_gnt_i) ;
         txn = instr_seq_item::type_id::create("txn");
+	final_txn = instr_seq_item::type_id::create("final_txn");
         txn.instr_addr_o   = vif.instr_addr_o;
         txn.instr_req_o   = vif.instr_req_o;
         txn.instr_gnt_i   = vif.instr_gnt_i;
@@ -31,17 +32,23 @@ class instruction_monitor extends uvm_monitor;
 
         txn.instr_rdata_i  = vif.instr_rdata_i;
         txn.instr_rvalid_i  = vif.instr_rvalid_i;
-        //`uvm_info("INS_MON", $sformatf("Captured addr=0x%08x data=0x%08x,    %0b     %0b", txn.instr_addr_o, txn.instr_rdata_i,vif.instr_req_o,vif.instr_gnt_i), UVM_LOW)
-        extract_inst_fields(txn);
-        `uvm_info("Instruction Monitor",$sformatf("Collect new inst item: addr 0x%0x inst 0x%0x inst_type %0s",txn.instr_addr_o,txn.instr_rdata_i,txn.inst_type), UVM_HIGH)
-        mon_ap.write(txn);  // Send to scoreboard or coverage collector
+        
+        extract_inst_fields(txn ,final_txn);
+	final_txn.Get_type();
+//`uvm_info("INS_MON", $sformatf("Captured addr=0x%08x data=0x%08x,    %0b     %0b", txn.instr_addr_o, txn.instr_rdata_i,vif.instr_req_o,vif.instr_gnt_i), UVM_LOW)
+
+
+        `uvm_info("Instruction Monitor",$sformatf("Collect: addr 0x%0x inst 0x%0x inst_type %0s inst_opcode %0d",final_txn.instr_addr_o,final_txn.instr_rdata_i,final_txn.inst_type,final_txn.opcode), UVM_HIGH)
+        mon_ap.write(final_txn);  // Send to scoreboard or coverage collector
       
     end
   endtask
   //---------------------------------------
   //  task extract instruction fields
   //---------------------------------------
-  task extract_inst_fields (inout instr_seq_item inst_seq);
+  task extract_inst_fields (input instr_seq_item txn, output inst_item);
+     inst_item= instr_seq_item::type_id::create("inst_item");
+     inst_item = txn;
      inst_seq.opcode<=inst_seq.instr_rdata_i[6:0];
      case(inst_seq.opcode)
     R_TYPE:
