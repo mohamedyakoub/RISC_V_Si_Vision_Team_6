@@ -330,7 +330,7 @@ class scoreboard extends uvm_component;
         LBU : rd_data = {24'b0,temp_data[0][7:0]};
         LH , LHU : begin 
           if (add_cycle) 
-            rd_data[15:0] ={temp_data[1][7:0],temp_data[0][7:0]};
+            rd_data = temp_data[1] ^ temp_data[0];
           else 
             rd_data[15:0] = temp_data[0][15:0];
           if(inst_type == LH )
