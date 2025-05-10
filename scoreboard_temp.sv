@@ -287,8 +287,10 @@ class scoreboard extends uvm_component;
             temp_data[0] = {rs2_data[7:0], 24'b0};
             temp_data[1] = {24'b0,rs2_data[15:8]};
           end
-          else 
-		  temp_data[0] = {16'b0,rs2_data[15:0]};// offset
+          else begin
+	    temp_data[0] = {16'b0,rs2_data[15:0]};// offset
+	    temp_data[0] << (8* offset)
+	  end
         end
         SW: begin
           if (add_cycle) begin
