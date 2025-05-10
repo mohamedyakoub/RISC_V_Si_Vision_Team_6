@@ -17,9 +17,9 @@ class scoreboard extends uvm_component;
   //---------------------------------------
   bit [31:0] expected_value_RegFile[0:31];
   //---------------------------------------
-  // TLM FIFOs to store the transactions
+  //  FIFOs to store the transactions
   //--------------------------------------- 
-  uvm_tlm_fifo #(instr_seq_item) inst_fifo;
+  instr_seq_item inst_fifo[$];
   //---------------------------------------
   //  structs to save the expected results
   //---------------------------------------
@@ -62,17 +62,19 @@ class scoreboard extends uvm_component;
   function void build_phase(uvm_phase phase);
 	super.build_phase(phase);
     data_mon_export = new("data_mon_export",this);
-    inst_mon_export = new("data_mon_export",this);
+    inst_mon_export = new("inst_mon_export",this);
     rf_mon_export = new("rf_mon_export ",this); 
-    inst_fifo = new("inst_fifo",this);
+    
   endfunction
   //---------------------------------------
   // write tasks - recives the items from monitors and pushes into queues
   //---------------------------------------
   
+
   function void write_inst_mon_export (instr_seq_item inst_item);
-    void'(inst_fifo.try_put(inst_item));
-    `uvm_info("scoreboard",{"Get new inst item: ", inst_item.convert2string()}, UVM_HIGH)
+
+    inst_fifo.push_back(inst_item);
+    `uvm_info("scoreboard",$sformatf("Get: addr 0x%0x\tinst 0x%0x,inst_type %0s",inst_item.instr_addr_o,inst_item.instr_rdata_i,inst_item.inst_type), UVM_HIGH)
     //extract data ,calculate the result
     // write the result to the local register file also the save the data and address of the result in a queue of struct
     // if the instruction is load wait untill get a flag from the memory then write the data to the local rf
@@ -143,7 +145,8 @@ class scoreboard extends uvm_component;
   virtual task run_phase(uvm_phase phase);  
     forever begin
       instr_seq_item inst_item ;
-      inst_fifo.get(inst_item);
+      wait(inst_fifo.size()>0);
+      inst_item = inst_fifo.pop_front();
       execute(inst_item);  
     end
   endtask
@@ -281,16 +284,15 @@ class scoreboard extends uvm_component;
       logic [31:0] temp_data[1:0] ;
       temp_data[1] =32'b0;
       case(inst_type)
-        SB: temp_data[0] = rs2_data[7:0] << (8*offset);
+        SB: temp_data[0] = rs2_data[7:0]; //temp_data[0] = rs2_data[7:0] << (8*offset);
         SH: begin
           if (add_cycle) begin
-            temp_data[0] = {rs2_data[7:0], 24'b0};
-            temp_data[1] = {24'b0,rs2_data[15:8]};
+            //temp_data[0] = {rs2_data[7:0], 24'b0};
+            //temp_data[1] = {24'b0,rs2_data[15:8]};
+	    temp_data[0] = {12'b0,rs2_data[7:0],rs2_data[15:8]};
           end
-          else begin
-	    temp_data[0] = {16'b0,rs2_data[15:0]};// offset
-	    temp_data[0] << (8* offset)
-	  end
+          else 
+            temp_data[0] = {16'b0,rs2_data[15:0]};
         end
         SW: begin
           if (add_cycle) begin
