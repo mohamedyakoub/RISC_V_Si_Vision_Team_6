@@ -34,7 +34,7 @@ class instruction_monitor extends uvm_monitor;
         txn.instr_rvalid_i  = vif.instr_rvalid_i;
         
         extract_inst_fields(txn ,final_txn);
-	final_txn.Get_type();
+	
 //`uvm_info("INS_MON", $sformatf("Captured addr=0x%08x data=0x%08x,    %0b     %0b", txn.instr_addr_o, txn.instr_rdata_i,vif.instr_req_o,vif.instr_gnt_i), UVM_LOW)
 
 
@@ -46,10 +46,12 @@ class instruction_monitor extends uvm_monitor;
   //---------------------------------------
   //  task extract instruction fields
   //---------------------------------------
-task extract_inst_fields (input instr_seq_item txn, output instr_seq_item inst_seq);
-    
+  task extract_inst_fields (input instr_seq_item  txn, output instr_seq_item inst_seq);
+     
+     //inst_item= instr_seq_item::type_id::create("inst_item");
      inst_seq = txn;
-     inst_seq.opcode=inst_seq.instr_rdata_i[6:0];
+     `uvm_info("mon_extract",$sformatf("Get: addr 0x%0x\tinst 0x%0x,inst_type %0s",inst_seq.instr_addr_o,inst_seq.instr_rdata_i,inst_seq.inst_type), UVM_HIGH)
+     inst_seq.opcode = inst_seq.instr_rdata_i[6:0];
      case(inst_seq.opcode)
     R_TYPE:
       begin
@@ -87,6 +89,7 @@ task extract_inst_fields (input instr_seq_item txn, output instr_seq_item inst_s
       end
   endcase
     inst_seq.Get_type();
+    `uvm_info("mon_extract after",$sformatf("Get: addr 0x%0x\tinst 0x%0x,inst_type %0s",inst_seq.instr_addr_o,inst_seq.instr_rdata_i,inst_seq.inst_type), UVM_HIGH)
   endtask
   
 endclass
