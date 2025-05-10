@@ -279,6 +279,7 @@ class scoreboard extends uvm_component;
     // store instructions
     if (inst_type == SB || inst_type == SH || inst_type == SW) begin
       logic [31:0] temp_data[1:0] ;
+      temp_data[1] =32'b0;
       case(inst_type)
         SB: temp_data[0] = rs2_data[7:0] << (8*offset);
         SH: begin
@@ -298,13 +299,14 @@ class scoreboard extends uvm_component;
             temp_data[0] = rs2_data[31:0];
         end
       endcase
+      rs2_data = temp_data[0] ^ temp_data[1];
       for (int i = 0 ; i <= add_cycle; i++)begin
         expctd_mem_data store_data;
-        store_data.data = temp_data[i];
+        store_data.data = rs2_data;
         store_data.addr = addr[i];
         store_data.byte_enable = byte_enable[i];
         store_mem_qu.push_back(store_data);
-        rd_data= 32s'bx;
+        rd_data= 32'bx;
       end
     end
     // load instructions
