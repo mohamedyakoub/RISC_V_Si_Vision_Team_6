@@ -21,22 +21,21 @@ class instruction_monitor extends uvm_monitor;
    
 
     forever begin
-      @(posedge vif.clk);
-
-      if (vif.instr_req_o && vif.instr_gnt_i) begin
+      @ (vif.instr_req_o && vif.instr_gnt_i) ;
         txn = instr_seq_item::type_id::create("txn");
         txn.instr_addr_o   = vif.instr_addr_o;
         txn.instr_req_o   = vif.instr_req_o;
         txn.instr_gnt_i   = vif.instr_gnt_i;
         // Wait for rvalid to know when data is ready
-        do @(posedge vif.clk); while (!vif.instr_rvalid_i);
+        @(vif.instr_rvalid_i); 
 
         txn.instr_rdata_i  = vif.instr_rdata_i;
         txn.instr_rvalid_i  = vif.instr_rvalid_i;
         //`uvm_info("INS_MON", $sformatf("Captured addr=0x%08x data=0x%08x,    %0b     %0b", txn.instr_addr_o, txn.instr_rdata_i,vif.instr_req_o,vif.instr_gnt_i), UVM_LOW)
         extract_inst_fields(txn);
+        `uvm_info("Instruction Monitor",$sformatf("Collect new inst item: addr 0x%0x inst 0x%0x inst_type %0s",txn.instr_addr_o,txn.instr_rdata_i,txn.inst_type), UVM_HIGH)
         mon_ap.write(txn);  // Send to scoreboard or coverage collector
-      end
+      
     end
   endtask
   //---------------------------------------
