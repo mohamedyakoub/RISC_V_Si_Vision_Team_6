@@ -46,10 +46,10 @@ class instruction_monitor extends uvm_monitor;
   //---------------------------------------
   //  task extract instruction fields
   //---------------------------------------
-task extract_inst_fields (input instr_seq_item txn, output instr_seq_item inst_item);
-     inst_item= instr_seq_item::type_id::create("inst_item");
-     inst_item = txn;
-     inst_seq.opcode<=inst_seq.instr_rdata_i[6:0];
+task extract_inst_fields (input instr_seq_item txn, output instr_seq_item inst_seq);
+    
+     inst_seq = txn;
+     inst_seq.opcode=inst_seq.instr_rdata_i[6:0];
      case(inst_seq.opcode)
     R_TYPE:
       begin
